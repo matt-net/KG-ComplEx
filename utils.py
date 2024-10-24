@@ -115,5 +115,36 @@ def plot_with_labels(embeddings, labels, title):
     plt.legend(title="Labels")
     plt.show()
 
-# Example: assuming you have 'labels' for your embeddings
-# labels could be relations, classes, or clusters
+from sklearn.metrics import average_precision_score
+
+def compute_average_precision(model, val_triples, val_labels, batch_size):
+    model.eval()
+    all_scores = []
+    all_labels = []
+
+    # DataLoader for validation set
+    val_dataset = TensorDataset(val_triples, val_labels)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+
+    with torch.no_grad():
+        for batch_triples, batch_labels in val_loader:
+            batch_triples = batch_triples.to(model.device)
+            batch_labels = batch_labels.to(model.device)
+
+            subjects = batch_triples[:, 0]
+            relations = batch_triples[:, 1]
+            objects = batch_triples[:, 2]
+
+            # Get scores for validation triples
+            scores = model.forward(subjects, relations, objects)
+
+            all_scores.append(scores.cpu())
+            all_labels.append(batch_labels.cpu())
+
+    # Flatten the scores and labels
+    all_scores = torch.cat(all_scores).numpy()
+    all_labels = torch.cat(all_labels).numpy()
+
+    # Calculate Average Precision using sklearn
+    ap = average_precision_score(all_labels, all_scores)
+    return ap

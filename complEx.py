@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 from negative_sampler import Negative_sampler
-
+from sklearn.metrics import average_precision_score
 
 class ComplEx(nn.Module):
     def __init__(self, num_entities, num_relations, embedding_dim):
@@ -41,41 +41,35 @@ class ComplEx(nn.Module):
             s_real * r_imag * o_imag - s_imag * r_imag * o_real, dim=1)
         return torch.sigmoid(score_)
 
-    def fit(self, triples, labels, num_entities, batch_size=64, epochs=100, lr=0.0001, regularization=0.0):
-        # Move model to the available device (GPU or CPU)
+    def fit(self, triples, labels, val_triples, val_labels, num_entities, batch_size=64, epochs=100, lr=0.0001,
+            regularization=0.0, patience=15):
         self.to(self.device)
 
-        # Create DataLoader for batching
         dataset = TensorDataset(triples, labels)
         data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
-        criterion = nn.BCEWithLogitsLoss()  # Binary cross-entropy for link prediction
-        optimizer = optim.Adam(self.parameters(), lr=lr)  # Adam optimizer
+        criterion = nn.BCEWithLogitsLoss()
+        optimizer = optim.Adam(self.parameters(), lr=lr)
+
+        best_ap = 0
+        patience_counter = 0
 
         for epoch in range(epochs):
             total_loss = 0.0
+            self.train()
+
             for batch_triples, batch_labels in data_loader:
                 optimizer.zero_grad()
 
-                # negatives = self.negative_sampler.generate_negative_samples(batch_triples, batch_size, num_entities)
-                # negatives = negatives.to(self.device)
-                # Move batch data to the available device (GPU or CPU)
                 batch_triples, batch_labels = batch_triples.to(self.device), batch_labels.to(self.device)
-                # batch_triples = torch.cat([batch_triples, negatives])
-                # batch_labels = torch.cat([batch_labels, torch.zeros(len(negatives), device=self.device)])
 
-                # Extract subject, relation, object from the batch
                 subjects = batch_triples[:, 0]
                 relations = batch_triples[:, 1]
                 objects = batch_triples[:, 2]
 
-                # Forward pass
                 scores = self.forward(subjects, relations, objects)
-
-                # Compute loss
                 loss = criterion(scores, batch_labels)
 
-                # Add L2 regularization (optional)
                 if regularization > 0.0:
                     l2_loss = (self.entity_real.weight.norm(2) ** 2 +
                                self.entity_imag.weight.norm(2) ** 2 +
@@ -83,16 +77,26 @@ class ComplEx(nn.Module):
                                self.relation_imag.weight.norm(2) ** 2)
                     loss += 2 * regularization * l2_loss
 
-                # Backpropagation
                 loss.backward()
                 optimizer.step()
-
                 total_loss += loss.item()
 
-            if epoch % 1 == 0:
-                print(f"Epoch {epoch}, Loss: {total_loss / len(data_loader)}")
+            # Calculate AP on validation set
+            val_ap = self.compute_average_precision(val_triples, val_labels, batch_size)
 
-        print("Training complete!")
+            print(f"Epoch {epoch}, Loss: {total_loss / len(data_loader)}, Val AP: {val_ap}")
+
+            # Check for early stopping based on AP
+            if val_ap > best_ap:
+                best_ap = val_ap
+                patience_counter = 0  # Reset the patience counter
+                print(f"New best AP: {best_ap}")
+            else:
+                patience_counter += 1
+
+            if patience_counter >= patience:
+                print("Early stopping triggered.")
+                break
 
     def predict(self, triples):
         self.to(self.device)
@@ -153,3 +157,35 @@ class ComplEx(nn.Module):
 
         hits_at_k = hits / total_pos_samples if total_pos_samples > 0 else 0
         return hits_at_k
+
+    def compute_average_precision(self, val_triples, val_labels, batch_size):
+        self.eval()
+        all_scores = []
+        all_labels = []
+
+        # DataLoader for validation set
+        val_dataset = TensorDataset(val_triples, val_labels)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+
+        with torch.no_grad():
+            for batch_triples, batch_labels in val_loader:
+                batch_triples = batch_triples.to(self.device)
+                batch_labels = batch_labels.to(self.device)
+
+                subjects = batch_triples[:, 0]
+                relations = batch_triples[:, 1]
+                objects = batch_triples[:, 2]
+
+                # Get scores for validation triples
+                scores = self.forward(subjects, relations, objects)
+
+                all_scores.append(scores.cpu())
+                all_labels.append(batch_labels.cpu())
+
+        # Flatten the scores and labels
+        all_scores = torch.cat(all_scores).numpy()
+        all_labels = torch.cat(all_labels).numpy()
+
+        # Calculate Average Precision using sklearn
+        ap = average_precision_score(all_labels, all_scores)
+        return ap
