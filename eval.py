@@ -17,20 +17,20 @@ if __name__ == "__main__":
     num_entities = len(unique_entities)
     num_relations = len(unique_relations)
     #
-    # Create mappings for entities and relations to indices
+    # # Create mappings for entities and relations to indices
     entity2id = {entity: idx for idx, entity in enumerate(unique_entities)}
     relation2id = {relation: idx for idx, relation in enumerate(unique_relations)}
 
-    # Convert triples into index-based tensors
-    triples = []
-    for _, row in df.iterrows():
-        subject_id = entity2id[row['head']]
-        relation_id = relation2id[row['relation']]
-        object_id = entity2id[row['tail']]
-        triples.append([subject_id, relation_id, object_id])
-
-    triples = torch.tensor(triples)
-    labels = torch.ones(len(triples), dtype=torch.float32)  # Positive labels
+    # # Convert triples into index-based tensors
+    # triples = []
+    # for _, row in df.iterrows():
+    #     subject_id = entity2id[row['head']]
+    #     relation_id = relation2id[row['relation']]
+    #     object_id = entity2id[row['tail']]
+    #     triples.append([subject_id, relation_id, object_id])
+    #
+    # triples = torch.tensor(triples)
+    # labels = torch.ones(len(triples), dtype=torch.float32)  # Positive labels
 
     # Generate negative triples and append to training data
     # negative_triples = negative_sampling(triples, num_entities, 0.1)
@@ -49,12 +49,11 @@ if __name__ == "__main__":
     # for name, tensor in tensors.items():
     #     torch.save(tensor, f'tensor_{name}.pt')
 
-    # Load the tensors by their descriptive filenames
-    # all_triples = torch.load('tensor_all_triples.pt')
-    # all_labels = torch.load('tensor_all_labels.pt')
-    # triples = torch.load('tensor_triples.pt')
-    # entity2id = torch.load('tensor_entity2id.pt')
-    # relation2id = torch.load('tensor_relation2id.pt')
+    train_triples = torch.load('tensor_train_triples.pt')
+    train_labels = torch.load('tensor_train_labels.pt')
+    entity2id = torch.load('tensor_entity2id.pt')
+    val_triples = torch.load('tensor_val_triples.pt')
+    val_labels = torch.load('tensor_val_labels.pt')
 
 
     embedding_dim = 256  # Dimensionality of complex vectors
@@ -68,9 +67,9 @@ if __name__ == "__main__":
     batch_size = 64
     k = 10
 
-    hits = model.hits_at_k(triples, labels, batch_size, k)
+    hits = model.hits_at_k(val_triples, val_labels, batch_size, k)
 
-    test_triples = torch.tensor([[entity2id['book_3790'], relation2id['won_award'], entity2id['award_101']]])
+    test_triples = torch.tensor([[entity2id['book_3790'], relation2id['read'], entity2id['award_109']]])
     predictions = model.predict(test_triples)
     print("Predictions for test triples:", predictions)
 

@@ -39,10 +39,10 @@ class ComplEx(nn.Module):
         # Compute the ComplEx score ( Page 11 of the paper)
         score_ = torch.sum(s_real * r_real * o_real + s_imag * r_real * o_imag, dim=1) + torch.sum(
             s_real * r_imag * o_imag - s_imag * r_imag * o_real, dim=1)
-        return torch.sigmoid(score_)
+        return score_
 
     def fit(self, triples, labels, val_triples, val_labels, num_entities, batch_size=64, epochs=100, lr=0.0001,
-            regularization=0.0, patience=15):
+            regularization=0.0, patience=50):
         self.to(self.device)
 
         dataset = TensorDataset(triples, labels)
@@ -56,7 +56,7 @@ class ComplEx(nn.Module):
 
         for epoch in range(epochs):
             total_loss = 0.0
-            self.train()
+            # self.train()
 
             for batch_triples, batch_labels in data_loader:
                 optimizer.zero_grad()
@@ -106,7 +106,7 @@ class ComplEx(nn.Module):
         relations = triples[:, 1]
         objects = triples[:, 2]
         scores = self.forward(subjects, relations, objects)
-        return scores
+        return torch.sigmoid(scores)
 
     def hits_at_k(self, triples, labels, batch_size, k):
         self.to(self.device)
