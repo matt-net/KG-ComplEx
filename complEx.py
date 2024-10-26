@@ -10,12 +10,10 @@ class ComplEx(nn.Module):
         super(ComplEx, self).__init__()
         self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
         print(f"Using {self.device}")
-        self.batch_size = 64
+
         # Real and imaginary parts for entity embeddings
         self.entity_real = nn.Embedding(num_entities, embedding_dim)
         self.entity_imag = nn.Embedding(num_entities, embedding_dim)
-
-        self.negative_sampler = Negative_sampler()
 
         # Real and imaginary parts for relation embeddings
         self.relation_real = nn.Embedding(num_relations, embedding_dim)
@@ -26,6 +24,8 @@ class ComplEx(nn.Module):
         nn.init.normal_(self.entity_imag.weight, mean=0.0, std=0.1)
         nn.init.normal_(self.relation_real.weight, mean=0.0, std=0.1)
         nn.init.normal_(self.relation_imag.weight, mean=0.0, std=0.1)
+
+        self.negative_sampler = Negative_sampler()
 
     def forward(self, s, r, o):
         s_real = self.entity_real(s)
@@ -44,7 +44,6 @@ class ComplEx(nn.Module):
             regularization=0.0, patience=10):
         self.to(self.device)
 
-        # Create lists to store loss and AP for each epoch
         epoch_losses = []
         epoch_ap = []
 
@@ -84,11 +83,9 @@ class ComplEx(nn.Module):
                 optimizer.step()
                 total_loss += loss.item()
 
-            # Store average loss for this epoch
             avg_loss = total_loss / len(data_loader)
             epoch_losses.append(avg_loss)
 
-            # Calculate and store AP on validation set
             val_ap = self.compute_average_precision(val_triples, val_labels, batch_size)
             epoch_ap.append(val_ap)
 
@@ -106,7 +103,6 @@ class ComplEx(nn.Module):
                 print("Early stopping triggered.")
                 break
 
-        # Save losses and APs for later plotting
         self.epoch_losses = epoch_losses
         self.epoch_ap = epoch_ap
 
