@@ -4,4 +4,4 @@ scikit-learn
 scipy
 seaborn
 torch
-matplotlib 
+matplotlib
