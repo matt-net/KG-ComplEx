@@ -56,7 +56,7 @@ if __name__ == "__main__":
     val_labels = torch.load('tensor_val_labels.pt')
 
 
-    embedding_dim = 256  # Dimensionality of complex vectors
+    embedding_dim = 512  # Dimensionality of complex vectors
     model = ComplEx(num_entities, num_relations, embedding_dim)
 
     # Initialize the model (same architecture and hyperparameters as when you saved it)
@@ -64,12 +64,12 @@ if __name__ == "__main__":
     # Load the saved state dictionary into the model
     model.load_state_dict(torch.load(f'complex_model_{embedding_dim}.pth'))
 
-    batch_size = 64
+    batch_size = 512
     k = 10
 
     hits = model.hits_at_k(val_triples, val_labels, batch_size, k)
 
-    test_triples = torch.tensor([[entity2id['book_3790'], relation2id['read'], entity2id['award_109']]])
+    test_triples = torch.tensor([[entity2id['reader_2654'], relation2id['read'], entity2id['book_8']]])
     predictions = model.predict(test_triples)
     print("Predictions for test triples:", predictions)
 

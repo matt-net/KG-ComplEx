@@ -22,13 +22,12 @@ class ComplEx(nn.Module):
         self.relation_imag = nn.Embedding(num_relations, embedding_dim)
 
         # Initialize embeddings with normal dist.
-        nn.init.normal_(self.entity_real.weight, mean=0.0, std=1.0)
-        nn.init.normal_(self.entity_imag.weight, mean=0.0, std=1.0)
-        nn.init.normal_(self.relation_real.weight, mean=0.0, std=1.0)
-        nn.init.normal_(self.relation_imag.weight, mean=0.0, std=1.0)
+        nn.init.normal_(self.entity_real.weight, mean=0.0, std=0.1)
+        nn.init.normal_(self.entity_imag.weight, mean=0.0, std=0.1)
+        nn.init.normal_(self.relation_real.weight, mean=0.0, std=0.1)
+        nn.init.normal_(self.relation_imag.weight, mean=0.0, std=0.1)
 
     def forward(self, s, r, o):
-        # Get real and imaginary parts of subject, relation, object
         s_real = self.entity_real(s)
         s_imag = self.entity_imag(s)
         r_real = self.relation_real(r)
@@ -42,8 +41,12 @@ class ComplEx(nn.Module):
         return score_
 
     def fit(self, triples, labels, val_triples, val_labels, num_entities, batch_size=64, epochs=100, lr=0.0001,
-            regularization=0.0, patience=50):
+            regularization=0.0, patience=10):
         self.to(self.device)
+
+        # Create lists to store loss and AP for each epoch
+        epoch_losses = []
+        epoch_ap = []
 
         dataset = TensorDataset(triples, labels)
         data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
@@ -56,7 +59,7 @@ class ComplEx(nn.Module):
 
         for epoch in range(epochs):
             total_loss = 0.0
-            # self.train()
+            self.train()
 
             for batch_triples, batch_labels in data_loader:
                 optimizer.zero_grad()
@@ -81,10 +84,15 @@ class ComplEx(nn.Module):
                 optimizer.step()
                 total_loss += loss.item()
 
-            # Calculate AP on validation set
-            val_ap = self.compute_average_precision(val_triples, val_labels, batch_size)
+            # Store average loss for this epoch
+            avg_loss = total_loss / len(data_loader)
+            epoch_losses.append(avg_loss)
 
-            print(f"Epoch {epoch}, Loss: {total_loss / len(data_loader)}, Val AP: {val_ap}")
+            # Calculate and store AP on validation set
+            val_ap = self.compute_average_precision(val_triples, val_labels, batch_size)
+            epoch_ap.append(val_ap)
+
+            print(f"Epoch {epoch}, Loss: {avg_loss}, Val AP: {val_ap}")
 
             # Check for early stopping based on AP
             if val_ap > best_ap:
@@ -97,6 +105,10 @@ class ComplEx(nn.Module):
             if patience_counter >= patience:
                 print("Early stopping triggered.")
                 break
+
+        # Save losses and APs for later plotting
+        self.epoch_losses = epoch_losses
+        self.epoch_ap = epoch_ap
 
     def predict(self, triples):
         self.to(self.device)
@@ -111,7 +123,6 @@ class ComplEx(nn.Module):
     def hits_at_k(self, triples, labels, batch_size, k):
         self.to(self.device)
 
-        # Create DataLoader for batching
         dataset = TensorDataset(triples, labels)
         data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
@@ -125,31 +136,24 @@ class ComplEx(nn.Module):
                 batch_triples = batch_triples.to(self.device)
                 batch_labels = batch_labels.to(self.device)
 
-                # Get the model predictions (e.g., scores or logits)
                 scores = self.predict(batch_triples)
 
-                # Separate positive and negative samples
                 pos_mask = (batch_labels == 1)
                 neg_mask = (batch_labels == 0)
 
-                # Get ranks for positive samples by comparing against all predictions
                 pos_scores = scores[pos_mask]
                 neg_scores = scores[neg_mask]
 
                 if len(pos_scores) == 0:
-                    continue  # No positive samples in this batch
+                    continue  # No positive samples in this batch :( (Bad luck!)
 
-                # Concatenate the positive and negative scores for ranking
                 all_scores = torch.cat([pos_scores, neg_scores], dim=0)
 
-                # Sort the scores in descending order (higher scores = higher ranks)
                 _, sorted_indices = torch.sort(all_scores, descending=True)
 
-                # Identify positions of positive samples in the sorted ranking
                 sorted_pos_ranks = torch.nonzero(sorted_indices < len(pos_scores)).view(
-                    -1) + 1  # Convert 0-based to 1-based
+                    -1) + 1
 
-                # Count the positive samples that are ranked within the top-k
                 hits_in_top_k = (sorted_pos_ranks <= k).sum().item()
 
                 hits += hits_in_top_k
@@ -163,7 +167,6 @@ class ComplEx(nn.Module):
         all_scores = []
         all_labels = []
 
-        # DataLoader for validation set
         val_dataset = TensorDataset(val_triples, val_labels)
         val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
@@ -175,17 +178,11 @@ class ComplEx(nn.Module):
                 subjects = batch_triples[:, 0]
                 relations = batch_triples[:, 1]
                 objects = batch_triples[:, 2]
-
-                # Get scores for validation triples
                 scores = self.forward(subjects, relations, objects)
-
                 all_scores.append(scores.cpu())
                 all_labels.append(batch_labels.cpu())
 
-        # Flatten the scores and labels
         all_scores = torch.cat(all_scores).numpy()
         all_labels = torch.cat(all_labels).numpy()
-
-        # Calculate Average Precision using sklearn
         ap = average_precision_score(all_labels, all_scores)
         return ap

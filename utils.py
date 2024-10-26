@@ -115,3 +115,20 @@ def plot_with_labels(embeddings, labels, title):
     plt.legend(title="Labels")
     plt.show()
 
+
+def split_train_val(triples, labels, val_ratio=0.1):
+    dataset_size = len(triples)
+    val_size = int(val_ratio * dataset_size)
+    train_size = dataset_size - val_size
+
+    indices = torch.randperm(dataset_size)
+    train_indices = indices[:train_size]
+    val_indices = indices[train_size:]
+
+    train_triples = triples[train_indices]
+    val_triples = triples[val_indices]
+    train_labels = labels[train_indices]
+    val_labels = labels[val_indices]
+
+    return train_triples, val_triples, train_labels, val_labels
+
